@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Form Builder</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/><polyline points="9 8 10 9 12 7"/></svg></div><div class="sb-logo-txt">Query<span>Craft</span></div></div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-user">
+      <div class="sb-user-row"><div class="avatar" id="sb-avatar"></div><div style="flex:1;overflow:hidden"><div class="sb-uname" id="sb-uname"></div><div class="sb-urole" id="sb-urole"></div></div></div>
+      <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- Builder sticky bar -->
+    <div class="builder-bar">
+      <div class="builder-head-left">
+        <button class="builder-back" onclick="goBack('/questionnaire')"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+        <div>
+          <div class="builder-title" id="bar-title">Create New Form</div>
+          <div class="builder-creator" id="bar-creator"></div>
+        </div>
+      </div>
+      <div class="builder-head-right">
+        <button class="btn btn-secondary" onclick="showAiModal()">✨ AI Assist</button>
+        <button class="btn btn-secondary" id="draft-btn" onclick="saveDraft()">💾 Save Draft</button>
+        <button class="btn btn-primary" id="save-btn" onclick="saveForm()">📤 Save Form</button>
+      </div>
+    </div>
+
+    <!-- Meta fields -->
+    <div class="meta-fields">
+      <div class="meta-grid">
+        <div class="fld-grp span-2">
+          <label>Title *</label>
+          <input class="fld-input" id="f-title" placeholder="Form title" oninput="bForm.title=this.value"/>
+        </div>
+        <div class="fld-grp span-2">
+          <label>Description</label>
+          <input class="fld-input" id="f-desc" placeholder="Brief description of this form" oninput="bForm.description=this.value"/>
+        </div>
+        <div class="fld-grp" id="assign-grp">
+          <label>Assign To <span class="req" style="color:var(--accent);margin-left:2px">*</span></label>
+          <div class="asgn-tags" id="asgn-tags"></div>
+          <select class="fld-input" id="asgn-sel" onchange="addAssignee(this.value)">
+            <option value="">— Select user to assign —</option>
+          </select>
+          <div class="fld-hint" id="asgn-hint">These users will see this form. <strong>Required</strong> when publishing.</div>
+        </div>
+        <div class="fld-grp" id="due-grp">
+          <label>Due Date</label>
+          <input type="date" class="fld-input" id="f-due" oninput="bForm.due_date=this.value"/>
+        </div>
+        <div class="fld-grp span-2 hidden" id="tpl-note">
+          <div style="background:var(--purple-lite);border:1px solid rgba(139,92,246,.2);border-radius:var(--rs);padding:10px 14px;font-size:.83rem;color:var(--purple)">
+            📋 This is a template. Assignment and due dates are set when you create a form from this template.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sections -->
+    <div id="sections-container"></div>
+    <button class="add-sec-btn" onclick="addSection()">+ Add New Section</button>
+  </main>
+</div>
+
+<!-- AI Modal -->
+<div id="ai-modal" class="hidden">
+  <div class="modal-overlay" onclick="if(event.target===this)closeAiModal()">
+    <div class="modal">
+      <div class="modal-hd">
+        <div class="modal-title">✨ ✨ Generate with AI</div>
+        <button class="modal-close" onclick="closeAiModal()">✕</button>
+      </div>
+      <p style="color:var(--txt-2);font-size:.86rem;margin-bottom:14px">Describe the topic of your form, and QueryCraft AI will instantly generate sections and questions for you.</p>
+      <input class="ai-inp" id="ai-topic" placeholder="e.g. Employee Satisfaction Survey" onkeydown="if(event.key==='Enter')generateAI()"/>
+      <div class="ai-loading" id="ai-loading">
+        <div class="ai-spin"></div>
+        <span>Generating survey instantly…</span>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" onclick="closeAiModal()">Cancel</button>
+        <button class="btn btn-primary" id="gen-btn" onclick="generateAI()">🚀 Generate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if(!requireAuth()) throw 0;
+requireCreator();
+const user = getUser();
+renderSidebar('questionnaire');
+if(typeof lucide!=="undefined")lucide.createIcons();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const params   = new URLSearchParams(location.search);
+const editId   = params.get('id')   || null;
+const isTpl    = params.get('template') === '1';
+const autoAI   = params.get('ai') === '1';
+let bForm = { title:'', description:'', due_date:'', assignees:[], sections:[{ title:'Section 1', description:'', questions:[] }] };
+let allUsers = [];
+
+document.getElementById('bar-creator').textContent = `Creator: ${user.name}`;
+if(isTpl){
+  document.getElementById('bar-title').innerHTML = `Create New Template <span class="tpl-pill">Template Mode</span>`;
+  document.getElementById('save-btn').textContent = '📋 Save Template';
+  document.getElementById('draft-btn').classList.add('hidden');
+  document.getElementById('assign-grp').classList.add('hidden');
+  document.getElementById('due-grp').classList.add('hidden');
+  document.getElementById('tpl-note').classList.remove('hidden');
+}
+
+async function init(){
+  // Load users for assignment dropdown
+  try{
+    allUsers = (await apiGet('/auth/users')).filter(u=>u.role==='respondent');
+    const sel = document.getElementById('asgn-sel');
+    allUsers.forEach(u=>{ const o=document.createElement('option'); o.value=u.id; o.textContent=`${u.name} (${u.email})`; sel.appendChild(o); });
+  }catch(e){}
+
+  if(editId){
+    try{
+      const f = await apiGet(`/forms/${editId}`);
+      bForm.title       = f.title;
+      bForm.description = f.description||'';
+      bForm.due_date    = f.due_date ? f.due_date.split('T')[0] : '';
+      bForm.assignees   = (f.assignments||[]).map(a=>a.user_id);
+      originalAssignees = [...bForm.assignees]; // snapshot for change detection
+      bForm.sections    = (f.sections||[]).map(sec=>({
+        title: sec.title, description: sec.description||'',
+        questions:(sec.questions||[]).map(q=>({
+          question_text: q.question_text,
+          question_type: q.question_type,
+          options: q.options?(typeof q.options==='string'?JSON.parse(q.options):q.options):[],
+          is_required: !!q.is_required
+        }))
+      }));
+      document.getElementById('f-title').value = bForm.title;
+      document.getElementById('f-desc').value  = bForm.description;
+      if(bForm.due_date) document.getElementById('f-due').value = bForm.due_date;
+      if(f.is_template){
+        document.getElementById('bar-title').innerHTML='Edit Template <span class="tpl-pill">Template Mode</span>';
+        document.getElementById('save-btn').textContent='📋 Save Template';
+        document.getElementById('assign-grp').classList.add('hidden');
+        document.getElementById('due-grp').classList.add('hidden');
+        document.getElementById('tpl-note').classList.remove('hidden');
+      } else {
+        document.getElementById('bar-title').textContent='Edit Form';
+      }
+      renderAssignees();
+    }catch(e){ toast('Failed to load form','err'); }
+  }
+  renderSections();
+}
+
+// ── Assignees ─────────────────────────────────────────────────────────────────
+function addAssignee(uid){
+  if(!uid) return;
+  if(!bForm.assignees.includes(+uid)) bForm.assignees.push(+uid);
+  document.getElementById('asgn-sel').value='';
+  renderAssignees();
+}
+function removeAssignee(uid){
+  bForm.assignees = bForm.assignees.filter(id=>id!==+uid);
+  renderAssignees();
+}
+function renderAssignees(){
+  document.getElementById('asgn-tags').innerHTML = bForm.assignees.map(uid=>{
+    const u=allUsers.find(x=>x.id===uid);
+    return u?`<span class="asgn-tag">${escHtml(u.name)}<button onclick="removeAssignee(${uid})">×</button></span>`:'';
+  }).join('');
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+function renderSections(){
+  document.getElementById('sections-container').innerHTML =
+    bForm.sections.map((s,si)=>secHTML(s,si)).join('');
+}
+
+function secHTML(s,si){
+  return `
+  <div class="sec-card" id="sec-${si}">
+    <div class="sec-hd">
+      <span class="sec-drag">⠿</span>
+      <button class="sec-toggle" id="stgl-${si}" onclick="toggleSec(${si})">▾</button>
+      <span class="sec-badge">SECTION ${si+1}</span>
+      <input class="sec-title-inp" placeholder="Section title" value="${escHtml(s.title)}" oninput="bForm.sections[${si}].title=this.value"/>
+      <span class="sec-q-count">(${s.questions.length} question${s.questions.length!==1?'s':''})</span>
+      <button class="sec-del" onclick="deleteSection(${si})">🗑</button>
+    </div>
+    <div class="sec-body open" id="sbody-${si}">
+      <input class="sec-desc-inp" placeholder="Section Description (Optional)" value="${escHtml(s.description||'')}" oninput="bForm.sections[${si}].description=this.value"/>
+      <div id="qs-${si}">${s.questions.map((q,qi)=>qHTML(q,si,qi)).join('')}</div>
+      <button class="add-q-btn" onclick="addQuestion(${si})">+ Add Question</button>
+    </div>
+  </div>`;
+}
+
+function qHTML(q,si,qi){
+  const types=[['short_text','Short Text'],['long_text','Long Text'],['single_choice','Single Choice'],['multiple_choice','Multiple Choice'],['rating','Rating'],['date','Date']];
+  const showOpts=['single_choice','multiple_choice'].includes(q.question_type);
+  return `
+  <div class="q-card" id="q-${si}-${qi}">
+    <div class="q-top">
+      <span class="q-drag">⠿</span>
+      <input class="q-inp" placeholder="Question text" value="${escHtml(q.question_text)}" oninput="bForm.sections[${si}].questions[${qi}].question_text=this.value"/>
+      <select class="q-type" onchange="changeQType(${si},${qi},this.value)">
+        ${types.map(([v,l])=>`<option value="${v}" ${q.question_type===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <button class="q-del" onclick="deleteQuestion(${si},${qi})">🗑</button>
+    </div>
+    ${showOpts?`
+    <div class="q-opts" id="opts-${si}-${qi}">
+      ${(q.options||[]).map((opt,oi)=>`
+        <div class="opt-row">
+          <input type="checkbox" disabled/>
+          <input type="text" value="${escHtml(opt)}" placeholder="Option ${oi+1}" oninput="bForm.sections[${si}].questions[${qi}].options[${oi}]=this.value"/>
+          <button class="opt-del" onclick="removeOpt(${si},${qi},${oi})">×</button>
+        </div>`).join('')}
+      <button class="add-opt" onclick="addOpt(${si},${qi})">+ Add Option</button>
+    </div>`:''}
+    <div class="q-footer">
+      <label class="req-toggle">
+        <input type="checkbox" ${q.is_required?'checked':''} onchange="bForm.sections[${si}].questions[${qi}].is_required=this.checked"/>
+        Required
+      </label>
+      <button class="logic-btn">⚡ Logic</button>
+    </div>
+  </div>`;
+}
+
+// ── Section actions ───────────────────────────────────────────────────────────
+function toggleSec(si){
+  const b=document.getElementById(`sbody-${si}`);
+  const t=document.getElementById(`stgl-${si}`);
+  b.classList.toggle('open');
+  t.textContent=b.classList.contains('open')?'▾':'▸';
+}
+function addSection(){
+  bForm.sections.push({title:`Section ${bForm.sections.length+1}`,description:'',questions:[]});
+  renderSections();
+  document.getElementById(`sec-${bForm.sections.length-1}`)?.scrollIntoView({behavior:'smooth'});
+}
+function deleteSection(si){
+  if(bForm.sections.length<=1){ toast('Form must have at least one section','err'); return; }
+  confirmModal('Delete Section?','This will delete the section and all its questions. Cannot be undone.',()=>{ bForm.sections.splice(si,1); renderSections(); });
+}
+
+// ── Question actions ──────────────────────────────────────────────────────────
+function addQuestion(si){
+  bForm.sections[si].questions.push({question_text:'',question_type:'short_text',options:[],is_required:false});
+  renderSections();
+}
+function deleteQuestion(si,qi){ bForm.sections[si].questions.splice(qi,1); renderSections(); }
+function changeQType(si,qi,type){
+  bForm.sections[si].questions[qi].question_type=type;
+  if(['single_choice','multiple_choice'].includes(type) && !bForm.sections[si].questions[qi].options.length)
+    bForm.sections[si].questions[qi].options=['Option 1','Option 2','Option 3'];
+  renderSections();
+}
+function addOpt(si,qi){ bForm.sections[si].questions[qi].options.push(`Option ${bForm.sections[si].questions[qi].options.length+1}`); renderSections(); }
+function removeOpt(si,qi,oi){ bForm.sections[si].questions[qi].options.splice(oi,1); renderSections(); }
+
+// ── AI Assist ─────────────────────────────────────────────────────────────────
+function showAiModal(){ document.getElementById('ai-modal').classList.remove('hidden'); setTimeout(()=>document.getElementById('ai-topic').focus(),100); }
+function closeAiModal(){ document.getElementById('ai-modal').classList.add('hidden'); document.getElementById('ai-topic').value=''; }
+
+async function generateAI(){
+  const topic=document.getElementById('ai-topic').value.trim();
+  if(!topic){ toast('Please enter a topic','err'); return; }
+  const loading=document.getElementById('ai-loading');
+  const loadingSpan=loading.querySelector('span');
+  const btn=document.getElementById('gen-btn');
+  loading.classList.add('show'); btn.disabled=true;
+
+  // Friendly loading messages while waiting
+  const messages=['Generating survey instantly…','Matching best category…','Building your questions…','Almost ready…'];
+  let msgIdx=0;
+  if(loadingSpan) loadingSpan.textContent=messages[0];
+  const msgTimer=setInterval(()=>{ msgIdx=(msgIdx+1)%messages.length; if(loadingSpan) loadingSpan.textContent=messages[msgIdx]; },2500);
+
+  try{
+    const data=await apiPost('/ai/generate',{topic});
+    if(data.title){ bForm.title=data.title; document.getElementById('f-title').value=data.title; }
+    if(data.description){ bForm.description=data.description; document.getElementById('f-desc').value=data.description; }
+    if(data.sections?.length){
+      bForm.sections=data.sections.map(s=>({
+        title:s.title, description:s.description||'',
+        questions:(s.questions||[]).map(q=>({
+          question_text:q.question_text, question_type:q.question_type||'short_text',
+          options:q.options||[], is_required:q.is_required!==false
+        }))
+      }));
+      renderSections();
+    }
+    closeAiModal();
+    const model=data._model?` (${data._model})`:'';
+    toast(`✅ Form generated successfully${model}!`,'ok');
+  }catch(err){
+    toast(err.message||'AI generation failed','err');
+  }
+  finally{ clearInterval(msgTimer); loading.classList.remove('show'); btn.disabled=false; if(loadingSpan) loadingSpan.textContent='Generating survey instantly…'; }
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+let originalAssignees = []; // track original assignees to detect changes
+
+function collectPayload(status) {
+  bForm.title       = document.getElementById('f-title').value.trim();
+  bForm.description = document.getElementById('f-desc').value.trim();
+  bForm.due_date    = document.getElementById('f-due')?.value||'';
+  if(!bForm.title){ toast('Title is required','err'); document.getElementById('f-title').focus(); return null; }
+
+  // Only send assignees in payload if they changed (prevents resetting assignment status on due_date edit)
+  const assigneesChanged = editId && JSON.stringify([...bForm.assignees].sort()) !== JSON.stringify([...originalAssignees].sort());
+  const sendAssignees = !editId || assigneesChanged || status === 'active';
+
+  return {
+    title:       bForm.title,
+    description: bForm.description,
+    due_date:    bForm.due_date||null,
+    assignees:   isTpl ? [] : (sendAssignees ? bForm.assignees : undefined),
+    sections:    bForm.sections,
+    is_template: isTpl,
+    status:      status
+  };
+}
+
+async function saveDraft(){
+  const payload = collectPayload('draft');
+  if(!payload) return;
+  const btn = document.getElementById('draft-btn');
+  btn.textContent='Saving…'; btn.disabled=true;
+  try{
+    if(editId){ await apiPut(`/forms/${editId}`,payload); toast('Draft saved!','ok'); }
+    else{ const r = await apiPost('/forms',payload); toast('Draft saved!','ok'); }
+  }catch(err){ toast(err.message||'Save failed','err'); }
+  finally{ btn.textContent='💾 Save Draft'; btn.disabled=false; }
+}
+
+async function saveForm(){
+  const payload = collectPayload('active');
+  if(!payload) return;
+  // Assignees are required to publish a form (not needed for templates)
+  if(!isTpl && (!bForm.assignees || bForm.assignees.length === 0)){
+    toast('Please assign at least one user before publishing the form.','warn');
+    document.getElementById('asgn-sel').focus();
+    // Highlight the assign field
+    const asgnGrp = document.getElementById('assign-grp');
+    if(asgnGrp){ asgnGrp.style.border='2px solid var(--accent)'; asgnGrp.style.borderRadius='var(--rs)'; asgnGrp.style.padding='10px'; }
+    setTimeout(()=>{ if(asgnGrp){ asgnGrp.style.border=''; asgnGrp.style.padding=''; } },3000);
+    return;
+  }
+  const saveBtn=document.getElementById('save-btn');
+  const origTxt = saveBtn.textContent;
+  saveBtn.textContent='Saving…'; saveBtn.disabled=true;
+  try{
+    if(editId){ await apiPut(`/forms/${editId}`,payload); toast('Form updated!','ok'); }
+    else{ await apiPost('/forms',payload); toast('Form saved and published!','ok'); }
+    setTimeout(()=>location.href='/questionnaire',900);
+  }catch(err){ toast(err.message||'Save failed','err'); }
+  finally{ saveBtn.textContent=origTxt; saveBtn.disabled=false; }
+}
+
+init().then(() => { if (autoAI) showAiModal(); });
+</script>
+</body>
+</html>

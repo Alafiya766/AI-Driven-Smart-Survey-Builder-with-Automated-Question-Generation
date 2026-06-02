@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Settings</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon">Q</div><div class="sb-logo-txt">Query<span>Craft</span></div></div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-user">
+      <div class="sb-user-row"><div class="avatar" id="sb-avatar"></div><div style="flex:1;overflow:hidden"><div class="sb-uname" id="sb-uname"></div><div class="sb-urole" id="sb-urole"></div></div></div>
+      <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="ph"><div class="ph-title">Settings</div></div>
+
+    <!-- Admin: Change Password -->
+    <div class="card" style="max-width:560px;margin-bottom:20px" id="adminPwCard" style="display:none">
+      <div class="card-hd"><div class="card-title">🔐 Admin Password</div></div>
+      <p style="font-size:.84rem;color:var(--txt-2);margin-bottom:16px">
+        As the sole administrator, you can update your login password here.
+      </p>
+      <div id="adminPwErr" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:8px;padding:10px 14px;font-size:.84rem;margin-bottom:12px;display:none"></div>
+      <div id="adminPwOk"  style="background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;border-radius:8px;padding:10px 14px;font-size:.84rem;margin-bottom:12px;display:none"></div>
+      <div class="fld-grp" style="margin-bottom:14px">
+        <label style="font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-2);display:block;margin-bottom:6px">Current Password</label>
+        <input class="fld-input" type="password" id="curPw" placeholder="Current password"/>
+      </div>
+      <div class="fld-grp" style="margin-bottom:14px">
+        <label style="font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-2);display:block;margin-bottom:6px">New Password</label>
+        <input class="fld-input" type="password" id="newPw" placeholder="New password (min 6 chars)"/>
+      </div>
+      <div class="fld-grp" style="margin-bottom:16px">
+        <label style="font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-2);display:block;margin-bottom:6px">Confirm New Password</label>
+        <input class="fld-input" type="password" id="conPw" placeholder="Confirm new password"/>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="changeAdminPassword()">Update Password</button>
+    </div>
+
+    <!-- Application Settings -->
+    <div class="card" style="max-width:560px;margin-bottom:20px">
+      <div class="card-hd"><div class="card-title">⚙️ Application</div></div>
+      <div class="fld-grp" style="margin-bottom:14px">
+        <label style="font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-2);display:block;margin-bottom:6px">Organization Name</label>
+        <input class="fld-input" value="QueryCraft Organization"/>
+      </div>
+      <div class="fld-grp" style="margin-bottom:16px">
+        <label style="font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-2);display:block;margin-bottom:6px">Default Due Date (days)</label>
+        <input class="fld-input" type="number" value="14"/>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="toast('Settings saved','ok')">Save Settings</button>
+    </div>
+
+    <!-- AI Configuration -->
+    <div class="card" style="max-width:560px">
+      <div class="card-hd"><div class="card-title">🤖 AI Configuration</div></div>
+      <div style="font-size:.84rem;color:var(--txt-2);margin-bottom:12px">
+        QueryCraft uses <strong>Google Gemini 1.5 Flash</strong> to auto-generate questionnaire sections and questions.
+        Your API key is set in <code style="background:var(--bg);padding:2px 6px;border-radius:4px">.env</code> on the backend.
+      </div>
+      <div class="fld-grp">
+        <label style="font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-2);display:block;margin-bottom:6px">Gemini API Key</label>
+        <input class="fld-input" type="password" value="••••••••••••••••" readonly style="color:var(--txt-3)"/>
+      </div>
+      <div style="margin-top:10px;font-size:.8rem;color:var(--txt-3)">
+        Get your key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--primary)">aistudio.google.com</a>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if (!requireAuth()) throw 0;
+requireCreator();
+renderSidebar('settings');
+
+// Show admin password section only for admin role
+const u = getUser();
+if (u && u.role === 'admin') {
+  document.getElementById('adminPwCard').style.display = 'block';
+}
+
+async function changeAdminPassword() {
+  const errEl = document.getElementById('adminPwErr');
+  const okEl  = document.getElementById('adminPwOk');
+  errEl.style.display = 'none'; okEl.style.display = 'none';
+  const cur  = document.getElementById('curPw').value;
+  const nw   = document.getElementById('newPw').value;
+  const conf = document.getElementById('conPw').value;
+  if (!cur || !nw || !conf) { errEl.textContent='All fields are required'; errEl.style.display='block'; return; }
+  if (nw.length < 6)        { errEl.textContent='New password must be at least 6 characters'; errEl.style.display='block'; return; }
+  if (nw !== conf)          { errEl.textContent='Passwords do not match'; errEl.style.display='block'; return; }
+  try {
+    const data = await apiPut('/auth/admin/change-password', { currentPassword: cur, newPassword: nw });
+    okEl.textContent = '✅ ' + data.message;
+    okEl.style.display = 'block';
+    document.getElementById('curPw').value = '';
+    document.getElementById('newPw').value = '';
+    document.getElementById('conPw').value = '';
+  } catch(err) { errEl.textContent = err.message; errEl.style.display='block'; }
+}
+</script>
+</body></html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Fill Form</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/><polyline points="9 8 10 9 12 7"/></svg></div><div class="sb-logo-txt">Query<span>Craft</span></div></div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-user">
+      <div class="sb-user-row"><div class="avatar" id="sb-avatar"></div><div style="flex:1;overflow:hidden"><div class="sb-uname" id="sb-uname"></div><div class="sb-urole" id="sb-urole"></div></div></div>
+      <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div style="margin-bottom:16px">
+      <button class="back-btn" onclick="goBack('/questionnaire')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back
+      </button>
+    </div>
+    <div id="page-content"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+  </main>
+</div>
+
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if(!requireAuth()) throw 0;
+const user = getUser();
+renderSidebar('questionnaire');
+if(typeof lucide!=="undefined")lucide.createIcons();
+
+const params = new URLSearchParams(location.search);
+const formId = params.get('id');
+if(!formId){ location.href='/questionnaire'; throw 0; }
+
+let formData     = null;
+let answers      = {};
+let step         = 0;
+let existingResp = null;
+let totalSteps   = 0;
+let isDone       = false;
+let isRet        = false;
+
+async function init(){
+  try{
+    [formData, existingResp] = await Promise.all([
+      apiGet(`/forms/${formId}`),
+      apiGet(`/responses/my/${formId}`).catch(()=>null)
+    ]);
+    // Pre-fill answers if resubmitting
+    if(existingResp?.answers){
+      existingResp.answers.forEach(a=>{
+        try{ answers[a.question_id] = typeof a.answer_value==='string' ? JSON.parse(a.answer_value) : a.answer_value; }
+        catch{ answers[a.question_id] = a.answer_value; }
+      });
+    }
+    totalSteps = (formData.sections||[]).length;
+    isRet  = existingResp?.status === 'returned';
+    isDone = existingResp?.status === 'reviewed';
+
+    // Check if deadline has passed — only block respondents who haven't submitted yet
+    const dueDate = formData.due_date;
+    const submittedStatuses = ['submitted', 'review', 'resubmitted', 'reviewed', 'completed'];
+    const alreadySubmitted = existingResp && submittedStatuses.includes(existingResp.status);
+    if(dueDate && !alreadySubmitted){
+      // Compare dates in local timezone to avoid off-by-one
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      // Parse due_date as local date (YYYY-MM-DD) to avoid UTC offset issue
+      const parts = dueDate.split('T')[0].split('-');
+      const due = new Date(+parts[0], +parts[1]-1, +parts[2]);
+      due.setHours(23,59,59,999); // deadline is end of the due date
+      if(today > due){
+        document.getElementById('page-content').innerHTML = `
+          <div class="fill-wrap">
+            <div style="text-align:center;padding:60px 20px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">
+              <div style="font-size:48px;margin-bottom:16px">⏰</div>
+              <div style="font-size:1.4rem;font-weight:800;color:var(--danger);margin-bottom:8px">Deadline Has Passed</div>
+              <div style="color:var(--txt-2);font-size:.9rem;margin-bottom:8px">The due date for <strong>${escHtml(formData.title)}</strong> was <strong>${fmtDate(dueDate)}</strong>.</div>
+              <div style="color:var(--txt-3);font-size:.84rem;margin-bottom:24px">This form is no longer accepting submissions. Please contact your creator if you need an extension.</div>
+              <button class="btn btn-secondary" onclick="goBack('/questionnaire')">← Back to My Forms</button>
+            </div>
+          </div>`;
+        if(typeof lucide!=="undefined")lucide.createIcons();
+        return;
+      }
+    }
+    renderPage();
+  }catch(err){
+    document.getElementById('page-content').innerHTML = `<div class="empty-state">Failed to load form: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderPage(){
+  document.getElementById('page-content').innerHTML = `
+    <div class="fill-wrap">
+      ${isRet ? `
+      <div class="rev-banner">
+        <div class="rev-banner-title">${icon("alert-triangle","currentColor",16)} Action Required: Revision Requested</div>
+        <div class="rev-banner-body">The reviewer has sent this form back. Please update your answers and resubmit.</div>
+        ${(existingResp.activity_logs||[]).filter(l=>l.action==='Sent back for changes').slice(0,1).map(l=>`
+          <div class="rev-note">Reviewer's Note: "${escHtml(l.note||'Please make the required changes')}"</div>`).join('')}
+      </div>` : ''}
+      ${isDone ? `
+      <div style="background:var(--success-lite);border:1px solid rgba(34,197,94,.3);border-radius:var(--rs);padding:12px 16px;margin-bottom:16px;font-size:.85rem;color:#166534;display:flex;align-items:center;gap:8px">
+        ${icon("check-circle","currentColor",16)} This form has been reviewed and completed.
+      </div>` : ''}
+      <div class="form-hero">
+        <div class="fh-title">${escHtml(formData.title)}</div>
+        <div class="fh-desc">${escHtml(formData.description||'')}</div>
+        <div class="fh-meta">
+          <span>${icon("user","currentColor",13)} ${escHtml(formData.creator_name||'')}</span>
+          <span>${icon("calendar","currentColor",13)} Due: ${fmtDate(formData.due_date)}</span>
+        </div>
+      </div>
+      <div id="step-content"></div>
+      <div id="nav-bar"></div>
+    </div>`;
+  if(typeof lucide!=="undefined")lucide.createIcons();
+  renderStep();
+}
+
+function renderStep(){
+  const secs = formData.sections||[];
+  if(!secs[step]) return;
+  const sec = secs[step];
+
+  // Render the questions for this step
+  document.getElementById('step-content').innerHTML = `
+    <div class="fill-panel" style="margin-bottom:14px">
+      <div class="fill-sec-hd">
+        <span class="fill-sec-step">Step ${step+1} of ${totalSteps}</span>
+        <div class="fill-sec-name">${escHtml(sec.title)}</div>
+        ${sec.description ? `<div class="fill-sec-desc">${escHtml(sec.description)}</div>` : ''}
+      </div>
+      ${(sec.questions||[]).map(q => renderQuestion(q)).join('')}
+    </div>`;
+
+  // Render navigation bar — always re-render so buttons appear/disappear correctly
+  const showPrev   = step > 0;
+  const showNext   = step < totalSteps - 1;
+  const showSubmit = step === totalSteps - 1 && !isDone;
+
+  document.getElementById('nav-bar').innerHTML = `
+    <div class="fill-panel" style="padding:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          ${showPrev ? `<button class="btn btn-secondary" onclick="prevStep()">${icon("arrow-left","currentColor",14)} Previous</button>` : ''}
+        </div>
+        <div style="font-size:.82rem;color:var(--txt-2)">Section ${step+1} of ${totalSteps}</div>
+        <div>
+          ${showNext ? `<button class="btn btn-primary" onclick="nextStep()">Next ${icon("arrow-right","currentColor",14)}</button>` : ''}
+          ${showSubmit ? `<button class="btn btn-primary" id="submit-btn" onclick="submitForm()">
+            ${isRet ? 'Resubmit Changes' : 'Submit Form'}
+          </button>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+function renderQuestion(q){
+  const val  = answers[q.id];
+  const opts = q.options ? (typeof q.options==='string' ? JSON.parse(q.options) : q.options) : [];
+  let inp = '';
+
+  if(q.question_type === 'rating'){
+    // Rating: clicking a button calls setAnsAndRefresh to show selection immediately
+    inp = `<div class="rating-row">
+      ${[1,2,3,4,5].map(n =>
+        `<button type="button"
+          class="rating-btn ${val==n ? 'sel' : ''}"
+          onclick="setAnsAndRefresh(${q.id}, ${n})">
+          ${n}
+        </button>`
+      ).join('')}
+    </div>`;
+
+  } else if(q.question_type === 'multiple_choice'){
+    const vals = Array.isArray(val) ? val : [];
+    inp = opts.map(o =>
+      `<label class="choice-opt ${vals.includes(o) ? 'sel' : ''}" style="cursor:pointer">
+        <input type="checkbox" ${vals.includes(o) ? 'checked' : ''}
+          onchange="toggleMC(${q.id},'${escHtml(o).replace(/'/g,"\\'")}',this.checked); updateChoiceStyle(this)"/>
+        <span>${escHtml(o)}</span>
+      </label>`
+    ).join('');
+
+  } else if(q.question_type === 'single_choice'){
+    inp = opts.map(o =>
+      `<label class="choice-opt ${val===o ? 'sel' : ''}" style="cursor:pointer">
+        <input type="radio" name="q${q.id}" ${val===o ? 'checked' : ''}
+          onchange="setAns(${q.id},'${escHtml(o).replace(/'/g,"\\'")}'); updateChoiceStyle(this)"/>
+        <span>${escHtml(o)}</span>
+      </label>`
+    ).join('');
+
+  } else if(q.question_type === 'long_text'){
+    inp = `<textarea class="fill-inp" rows="4" placeholder="Your answer…"
+      oninput="setAns(${q.id},this.value)">${escHtml(String(val||''))}</textarea>`;
+
+  } else if(q.question_type === 'date'){
+    inp = `<input type="date" class="fill-inp" value="${escHtml(String(val||''))}"
+      onchange="setAns(${q.id},this.value)"/>`;
+
+  } else {
+    // short_text default
+    inp = `<input type="text" class="fill-inp" placeholder="Your answer…"
+      value="${escHtml(String(val||''))}"
+      oninput="setAns(${q.id},this.value)"/>`;
+  }
+
+  return `<div class="q-block">
+    <div class="q-label">${escHtml(q.question_text)}${q.is_required ? '<span class="req">*</span>' : ''}</div>
+    ${inp}
+  </div>`;
+}
+
+// ── Answer state handlers ─────────────────────────────────────────────────────
+function setAns(qid, val){
+  answers[qid] = val;
+}
+
+// For rating: update state and re-render just the step to reflect selection
+function setAnsAndRefresh(qid, val){
+  answers[qid] = val;
+  renderStep(); // re-render so rating buttons show correct 'sel' class
+}
+
+function toggleMC(qid, opt, checked){
+  if(!Array.isArray(answers[qid])) answers[qid] = [];
+  if(checked){
+    if(!answers[qid].includes(opt)) answers[qid].push(opt);
+  } else {
+    answers[qid] = answers[qid].filter(v => v !== opt);
+  }
+}
+
+// Update choice label style after radio/checkbox change without full re-render
+function updateChoiceStyle(input){
+  const label = input.closest('label');
+  if(!label) return;
+  const siblings = label.parentElement?.querySelectorAll('label.choice-opt');
+  if(siblings && input.type === 'radio'){
+    siblings.forEach(l => l.classList.remove('sel'));
+  }
+  if(input.checked) label.classList.add('sel');
+  else label.classList.remove('sel');
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function nextStep(){
+  if(step < totalSteps - 1){ step++; renderStep(); window.scrollTo({top:0,behavior:'smooth'}); }
+}
+function prevStep(){
+  if(step > 0){ step--; renderStep(); window.scrollTo({top:0,behavior:'smooth'}); }
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────────
+async function submitForm(){
+  const secs = formData.sections||[];
+  // Validate all required questions across all sections
+  for(const sec of secs){
+    for(const q of sec.questions||[]){
+      if(q.is_required){
+        const v = answers[q.id];
+        if(v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)){
+          toast(`Required: "${q.question_text}"`, 'warn');
+          return;
+        }
+      }
+    }
+  }
+
+  const btn = document.getElementById('submit-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  try{
+    const payload = {
+      form_id: +formId,
+      answers: Object.entries(answers).map(([qid, value]) => ({ question_id: +qid, value }))
+    };
+    await apiPost('/responses', payload);
+    toast(isRet ? 'Resubmitted successfully!' : 'Form submitted!', 'ok');
+    setTimeout(() => location.href = '/questionnaire', 1200);
+  } catch(err){
+    toast(err.message || 'Submit failed', 'err');
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = `${icon("${isRet ? 'refresh-cw' : 'send'}","currentColor",14)} ${isRet ? 'Resubmit Changes' : 'Submit Form'}`;
+      if(typeof lucide!=="undefined")lucide.createIcons();
+    }
+  }
+}
+
+init();
+</script>
+</body>
+</html>

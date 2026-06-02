@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Register</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-icon">Q</div>
+        <div class="auth-logo-text">Query<span>Craft</span></div>
+      </div>
+      <div class="auth-heading">Create account</div>
+      <div class="auth-sub">Join QueryCraft and choose your role</div>
+      <div class="auth-error" id="err"></div>
+
+      <div class="fld"><label>Full Name</label><input type="text" id="name" placeholder="Your full name" required/></div>
+      <div class="fld"><label>Email Address</label><input type="email" id="email" placeholder="you@example.com" required/></div>
+      <div class="fld"><label>Password</label><input type="password" id="pass" placeholder="Min 6 characters" required minlength="6"/></div>
+
+      <div class="role-select-wrap">
+        <label>Select Role</label>
+        <select id="role">
+          <option value="creator">Creator — Build &amp; manage questionnaires</option>
+          <option value="respondent">Respondent — Fill &amp; submit questionnaires</option>
+        </select>
+      </div>
+
+      <button class="auth-btn" id="sbtn" onclick="handleRegister()">Create Account →</button>
+      <div class="auth-switch">Already have an account? <a href="/login">Sign in</a></div>
+    </div>
+  </div>
+</div>
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if (getToken()) location.href = '/dashboard';
+
+async function handleRegister() {
+  const errEl = document.getElementById('err');
+  const btn   = document.getElementById('sbtn');
+  errEl.style.display = 'none';
+  btn.textContent = 'Creating…'; btn.disabled = true;
+  try {
+    await apiPost('/auth/register', {
+      name:     document.getElementById('name').value.trim(),
+      email:    document.getElementById('email').value.trim(),
+      password: document.getElementById('pass').value,
+      role:     document.getElementById('role').value
+    });
+    toast('Account created! A welcome email has been sent. Please sign in.', 'ok');
+    setTimeout(() => location.href = '/login', 1800);
+  } catch(err) { errEl.textContent = err.message; errEl.style.display = 'block'; }
+  finally { btn.textContent = 'Create Account →'; btn.disabled = false; }
+}
+</script>
+</body></html>

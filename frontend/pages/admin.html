@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Admin Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/><polyline points="9 8 10 9 12 7"/></svg></div><div class="sb-logo-txt">Query<span>Craft</span></div></div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-user">
+      <div class="sb-user-row"><div class="avatar" id="sb-avatar"></div><div style="flex:1;overflow:hidden"><div class="sb-uname" id="sb-uname"></div><div class="sb-urole" id="sb-urole"></div></div></div>
+      <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="ph">
+      <div><div class="ph-title">Admin Panel</div><div class="ph-sub">Monitor all creators, respondents, forms, and system activity.</div></div>
+      <div class="ph-actions">
+        <div class="tab-bar">
+          <button class="tab-btn active" id="t-overview"    onclick="switchTab('overview')">Overview</button>
+          <button class="tab-btn"        id="t-creators"    onclick="switchTab('creators')">Creators</button>
+          <button class="tab-btn"        id="t-respondents" onclick="switchTab('respondents')">Respondents</button>
+          <button class="tab-btn"        id="t-users"       onclick="switchTab('users')">All Users</button>
+          <button class="tab-btn"        id="t-logs"        onclick="switchTab('logs')">Audit Log</button>
+        </div>
+      </div>
+    </div>
+    <div id="tab-content"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+  </main>
+</div>
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if (!requireAuth()) throw 0;
+requireAdmin();
+renderSidebar('admin');
+if(typeof lucide!=="undefined")lucide.createIcons();
+
+let adminData = null;
+let allUsersData = null;
+let currentTab = 'overview';
+
+async function init() {
+  try {
+    [adminData, allUsersData] = await Promise.all([
+      apiGet('/analytics/admin'),
+      apiGet('/auth/admin/users')
+    ]);
+    switchTab('overview');
+  } catch(err) {
+    document.getElementById('tab-content').innerHTML = `
+      <div class="empty-state" style="text-align:center;padding:48px">
+        ${icon("alert-triangle","var(--danger)",40)}
+        <div style="font-weight:700;margin-bottom:6px">Failed to load admin data</div>
+        <div style="color:var(--txt-2);font-size:.85rem;margin-bottom:16px">${escHtml(err.message)}</div>
+        <button class="btn btn-primary" onclick="init()">Retry</button>
+      </div>`;
+    if(typeof lucide!=="undefined")lucide.createIcons();
+  }
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  ['overview','creators','respondents','users','logs'].forEach(t => {
+    document.getElementById(`t-${t}`)?.classList.toggle('active', t === tab);
+  });
+  switch(tab) {
+    case 'overview':    renderOverview(); break;
+    case 'creators':    renderCreators(); break;
+    case 'respondents': renderRespondents(); break;
+    case 'users':       renderAllUsers(); break;
+    case 'logs':        renderLogs(); break;
+  }
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+function renderOverview() {
+  const s = adminData?.formStats || {};
+  const u = adminData?.userStats || {};
+
+  const totalUsers   = parseInt(u.total_users)        || 0;
+  const admins       = parseInt(u.admins)             || 0;
+  const creators     = parseInt(u.creators)           || 0;
+  const respondents  = parseInt(u.respondents)        || 0;
+  const totalForms   = parseInt(s.active_forms)       || 0;
+  const templates    = parseInt(s.templates)          || 0;
+  const totalResp    = parseInt(s.total_responses)    || 0;
+  const completed    = parseInt(s.completed_assignments) || 0;
+
+  document.getElementById('tab-content').innerHTML = `
+    <div class="an-stats an-stats-4" style="margin-bottom:22px">
+      <div class="an-stat">
+        <div class="an-label">${icon("users","currentColor",14)}Total Users</div>
+        <div class="an-val">${totalUsers}</div>
+      </div>
+      <div class="an-stat">
+        <div class="an-label">${icon("edit-3","currentColor",14)}Creators</div>
+        <div class="an-val" style="color:var(--primary)">${creators}</div>
+      </div>
+      <div class="an-stat">
+        <div class="an-label">${icon("user-check","currentColor",14)}Respondents</div>
+        <div class="an-val" style="color:var(--success)">${respondents}</div>
+      </div>
+      <div class="an-stat">
+        <div class="an-label">${icon("shield","currentColor",14)}Admins</div>
+        <div class="an-val" style="color:var(--purple)">${admins}</div>
+      </div>
+    </div>
+    <div class="an-stats an-stats-4" style="margin-bottom:22px">
+      <div class="an-stat">
+        <div class="an-label">${icon("file-text","currentColor",14)}Active Forms</div>
+        <div class="an-val">${totalForms}</div>
+      </div>
+      <div class="an-stat">
+        <div class="an-label">${icon("layout-template","currentColor",14)}Templates</div>
+        <div class="an-val">${templates}</div>
+      </div>
+      <div class="an-stat">
+        <div class="an-label">${icon("send","currentColor",14)}Responses</div>
+        <div class="an-val">${totalResp}</div>
+      </div>
+      <div class="an-stat">
+        <div class="an-label">${icon("check-circle","currentColor",14)}Completed</div>
+        <div class="an-val" style="color:var(--success)">${completed}</div>
+      </div>
+    </div>
+    <div class="dash-grid">
+      <div class="dash-panel">
+        <div class="dash-panel-title">${icon("edit-3","currentColor",15)} Top Creators</div>
+        ${(adminData?.creators||[]).slice(0,6).map(c=>`
+          <div class="dl-item">
+            <div class="avatar" style="width:32px;height:32px;font-size:.78rem;flex-shrink:0">${c.name.charAt(0).toUpperCase()}</div>
+            <div class="dl-info">
+              <div class="dl-title">${escHtml(c.name)}</div>
+              <div class="dl-meta">${parseInt(c.forms_created)||0} forms · ${parseInt(c.responses_received)||0} responses</div>
+            </div>
+          </div>`).join('') || '<div class="empty-state">No creators yet</div>'}
+      </div>
+      <div class="dash-panel">
+        <div class="dash-panel-title">${icon("activity","currentColor",15)} Recent Activity</div>
+        ${(adminData?.logs||[]).slice(0,10).map(l=>`
+          <div class="log-row"><div class="log-dot"></div>
+            <div><div class="log-txt"><strong>${escHtml(l.user_name||'?')}</strong> — ${escHtml(l.action)}${l.form_title?` · <em>${escHtml(l.form_title)}</em>`:''}</div>
+            <div class="log-time">${timeAgo(l.created_at)}</div></div>
+          </div>`).join('') || '<div class="empty-state">No activity yet</div>'}
+      </div>
+    </div>`;
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+function renderCreators() {
+  const creators = adminData?.creators || [];
+  document.getElementById('tab-content').innerHTML = `
+    <div class="card">
+      <div class="card-hd"><div class="card-title">${icon("edit-3","currentColor",14)} All Creators (${creators.length})</div></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Name</th><th>Email</th><th>Forms Created</th><th>Responses Received</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${creators.length ? creators.map(c=>`
+              <tr>
+                <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:30px;height:30px;font-size:.75rem">${c.name.charAt(0).toUpperCase()}</div><strong>${escHtml(c.name)}</strong></div></td>
+                <td style="color:var(--txt-2)">${escHtml(c.email)}</td>
+                <td><span style="font-family:var(--mono);font-weight:700">${parseInt(c.forms_created)||0}</span></td>
+                <td><span style="font-family:var(--mono);font-weight:700">${parseInt(c.responses_received)||0}</span></td>
+                <td style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button class="btn btn-ghost btn-sm" onclick="changeRole(${c.id},'respondent')">→ Respondent</button>
+                  <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteUser(${c.id},'${escHtml(c.name)}')" title="Delete">${icon("trash-2","currentColor",13)}</button>
+                </td>
+              </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--txt-3);padding:32px">No creators yet</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+function renderRespondents() {
+  const respondents = adminData?.respondents || [];
+  document.getElementById('tab-content').innerHTML = `
+    <div class="card">
+      <div class="card-hd"><div class="card-title">${icon("user-check","currentColor",14)} All Respondents (${respondents.length})</div></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Name</th><th>Email</th><th>Assigned</th><th>Submitted</th><th>Completed</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${respondents.length ? respondents.map(r=>`
+              <tr>
+                <td><div style="display:flex;align-items:center;gap:9px"><div class="avatar" style="width:30px;height:30px;font-size:.75rem;background:linear-gradient(135deg,var(--success),#16a34a)">${r.name.charAt(0).toUpperCase()}</div><strong>${escHtml(r.name)}</strong></div></td>
+                <td style="color:var(--txt-2)">${escHtml(r.email)}</td>
+                <td><span style="font-family:var(--mono)">${parseInt(r.forms_assigned)||0}</span></td>
+                <td><span style="font-family:var(--mono)">${parseInt(r.responses_submitted)||0}</span></td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="prog-bar" style="width:80px"><div class="prog-fill" style="width:${(parseInt(r.forms_assigned)||0)>0?Math.min(100,Math.round(((parseInt(r.responses_submitted)||0)/(parseInt(r.forms_assigned)||1))*100)):0}%"></div></div>
+                    <span style="font-size:.75rem;color:var(--txt-3)">${(parseInt(r.forms_assigned)||0)>0?Math.min(100,Math.round(((parseInt(r.responses_submitted)||0)/(parseInt(r.forms_assigned)||1))*100)):0}%</span>
+                  </div>
+                </td>
+                <td style="display:flex;gap:6px">
+                  <button class="btn btn-ghost btn-sm" onclick="changeRole(${r.id},'creator')">→ Creator</button>
+                  <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteUser(${r.id},'${escHtml(r.name)}')">${icon("trash-2","currentColor",13)}</button>
+                </td>
+              </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--txt-3);padding:32px">No respondents yet</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+function renderAllUsers() {
+  const users = allUsersData || [];
+  document.getElementById('tab-content').innerHTML = `
+    <div class="card">
+      <div class="card-hd"><div class="card-title">${icon("users","currentColor",14)} All Users (${users.length})</div></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th>Change Role</th><th>Delete</th></tr></thead>
+          <tbody>
+            ${users.map(u=>`
+              <tr>
+                <td><div style="display:flex;align-items:center;gap:9px">
+                  <div class="avatar" style="width:30px;height:30px;font-size:.75rem">${u.name.charAt(0).toUpperCase()}</div>
+                  <strong>${escHtml(u.name)}</strong></div></td>
+                <td style="color:var(--txt-2)">${escHtml(u.email)}</td>
+                <td><span class="role-chip" style="color:${roleColor(u.role)};background:${roleColor(u.role)}1a">${roleBadge(u.role)}</span></td>
+                <td style="font-size:.78rem;color:var(--txt-3)">${fmtDate(u.created_at)}</td>
+                <td>
+                  <select class="q-type" onchange="changeRole(${u.id},this.value);this.value=''" style="font-size:.78rem">
+                    <option value="">Change role…</option>
+                    <option value="admin">Admin</option>
+                    <option value="creator">Creator</option>
+                    <option value="respondent">Respondent</option>
+                  </select>
+                </td>
+                <td><button class="btn btn-ghost btn-icon btn-sm" style="color:var(--danger)" onclick="deleteUser(${u.id},'${escHtml(u.name)}')">${icon("trash-2","currentColor",13)}</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+function renderLogs() {
+  const logs = adminData?.logs || [];
+  document.getElementById('tab-content').innerHTML = `
+    <div class="card">
+      <div class="card-hd"><div class="card-title">${icon("scroll-text","currentColor",14)} Audit Log (${logs.length} entries)</div></div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Form</th><th>Note</th></tr></thead>
+          <tbody>
+            ${logs.length ? logs.map(l=>`
+              <tr>
+                <td style="font-size:.75rem;color:var(--txt-3);font-family:var(--mono);white-space:nowrap">${timeAgo(l.created_at)}</td>
+                <td><strong>${escHtml(l.user_name||'—')}</strong></td>
+                <td>${escHtml(l.action||'—')}</td>
+                <td style="color:var(--txt-2)">${escHtml(l.form_title||'—')}</td>
+                <td style="color:var(--txt-3);font-size:.8rem">${escHtml(l.note||'—')}</td>
+              </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--txt-3);padding:32px">No activity yet</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  if(typeof lucide!=="undefined")lucide.createIcons();
+}
+
+async function changeRole(uid, newRole) {
+  try {
+    await apiPut(`/auth/admin/users/${uid}/role`, { role: newRole });
+    toast(`Role changed to ${newRole}`, 'ok');
+    [adminData, allUsersData] = await Promise.all([apiGet('/analytics/admin'), apiGet('/auth/admin/users')]);
+    switchTab(currentTab);
+  } catch(err) { toast(err.message, 'err'); }
+}
+
+function deleteUser(uid, name) {
+  confirmModal(`Delete "${name}"?`, 'This will permanently delete the user and all their data.', async () => {
+    try {
+      await apiDelete(`/auth/admin/users/${uid}`);
+      toast('User deleted', 'ok');
+      [adminData, allUsersData] = await Promise.all([apiGet('/analytics/admin'), apiGet('/auth/admin/users')]);
+      switchTab(currentTab);
+    } catch(err) { toast(err.message, 'err'); }
+  });
+}
+
+init();
+</script>
+</body></html>

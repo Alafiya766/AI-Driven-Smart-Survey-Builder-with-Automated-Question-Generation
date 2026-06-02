@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Sign In</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-icon">Q</div>
+        <div class="auth-logo-text">Query<span>Craft</span></div>
+      </div>
+      <div class="auth-heading">Welcome back</div>
+      <div class="auth-sub">Sign in to your QueryCraft account</div>
+      <div class="auth-error" id="err"></div>
+      <form onsubmit="handleLogin(event)">
+        <div class="fld"><label>Email Address</label>
+          <input type="email" id="email" placeholder="you@example.com" required autocomplete="email"/></div>
+        <div class="fld"><label>Password</label>
+          <input type="password" id="pass" placeholder="Your password" required/></div>
+        <div class="forgot-link"><a href="/forgot-password">Forgot password?</a></div>
+        <button type="submit" class="auth-btn" id="sbtn">Sign In →</button>
+      </form>
+      <div class="auth-switch">Don't have an account? <a href="/register">Create one</a></div>
+    </div>
+  </div>
+</div>
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if (getToken()) location.href = '/dashboard';
+async function handleLogin(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('err');
+  const btn   = document.getElementById('sbtn');
+  errEl.style.display = 'none'; btn.textContent = 'Signing in…'; btn.disabled = true;
+  try {
+    const data = await apiPost('/auth/login', {
+      email: document.getElementById('email').value.trim(),
+      password: document.getElementById('pass').value
+    });
+    setAuth(data.token, data.user);
+    location.href = '/dashboard';
+  } catch(err) { errEl.textContent = err.message; errEl.style.display = 'block'; }
+  finally { btn.textContent = 'Sign In →'; btn.disabled = false; }
+}
+</script>
+</body></html>

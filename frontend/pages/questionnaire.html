@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QueryCraft – Questionnaires</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sb-logo">
+        <div class="sb-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+            <line x1="9" y1="12" x2="15" y2="12" />
+            <line x1="9" y1="16" x2="15" y2="16" />
+            <polyline points="9 8 10 9 12 7" />
+          </svg></div>
+        <div class="sb-logo-txt">Query<span>Craft</span></div>
+      </div>
+      <nav class="sb-nav" id="sb-nav"></nav>
+      <div class="sb-user">
+        <div class="sb-user-row">
+          <div class="avatar" id="sb-avatar"></div>
+          <div style="flex:1;overflow:hidden">
+            <div class="sb-uname" id="sb-uname"></div>
+            <div class="sb-urole" id="sb-urole"></div>
+          </div>
+        </div>
+        <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg"
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg> Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="ph">
+        <div>
+          <div class="ph-title">Questionnaires</div>
+          <div class="ph-sub">Manage, assign, and track all your forms.</div>
+        </div>
+        <div class="ph-actions" id="ph-actions"></div>
+      </div>
+      <div id="tab-wrap" class="hidden" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div class="tab-bar">
+            <button class="tab-btn active" id="tab-active" onclick="switchTab('active')">Active Forms</button>
+            <button class="tab-btn" id="tab-drafts" onclick="switchTab('drafts')">Drafts</button>
+            <button class="tab-btn" id="tab-templates" onclick="switchTab('templates')">Templates</button>
+          </div>
+          <div class="search-bar">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+
+            <input type="text" id="search-inp" placeholder="Search forms…" oninput="filterForms()" />
+          </div>
+        </div>
+      </div>
+      <div id="content">
+        <div class="spinner-wrap">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/js/vendor/lucide.min.js"></script>
+  <script src="/js/shared.js"></script>
+  <script>
+    if (!requireAuth()) throw 0;
+    const user = getUser();
+    renderSidebar('questionnaire');
+    if (typeof lucide !== "undefined") lucide.createIcons();
+
+    const phActions = document.getElementById('ph-actions');
+    const tabWrap = document.getElementById('tab-wrap');
+    let allForms = [];
+
+    if (['creator', 'admin'].includes(user.role)) {
+      tabWrap.classList.remove('hidden');
+      phActions.innerHTML = `
+    <button class="btn btn-secondary" onclick="location.href='/form-builder?ai=1'">${icon("sparkles", "currentColor", 15)} AI Assist</button>
+    <button class="btn btn-primary" id="create-btn" onclick="location.href='/form-builder'">${icon("plus", "currentColor", 15)} Create New Form</button>`;
+      if (typeof lucide !== "undefined") lucide.createIcons();
+      switchTab('active');
+    } else {
+      loadRespondentForms();
+    }
+
+    function switchTab(tab) {
+      ['active', 'drafts', 'templates'].forEach(t => document.getElementById(`tab-${t}`)?.classList.toggle('active', t === tab));
+      if (tab === 'active') loadActiveForms();
+      else if (tab === 'drafts') loadDraftForms();
+      else loadTemplatesTab();
+    }
+
+    // ── Active Forms ──────────────────────────────────────────────────────────────
+    async function loadActiveForms() {
+      document.getElementById('content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+      try {
+        const all = await apiGet('/forms');
+        allForms = all.filter(f => f.status === 'active');
+        const actionForms = await apiGet('/forms/action-required').catch(() => []);
+        renderForms(allForms, actionForms);
+      } catch (err) { document.getElementById('content').innerHTML = '<div class="empty-state">Failed to load forms</div>'; toast(err.message, 'err'); }
+    }
+
+    // ── Draft Forms ───────────────────────────────────────────────────────────────
+    async function loadDraftForms() {
+      document.getElementById('content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+      try {
+        const drafts = await apiGet('/forms/drafts');
+        document.getElementById('content').innerHTML = `
+      <div class="draft-banner">${icon("file-edit", "currentColor", 18)}<span>These forms are saved as drafts and not yet visible to respondents. Click "Publish" to make them active.</span></div>
+      <div class="forms-list">
+        ${drafts.length ? drafts.map(renderDraftCard).join('') : emptyBox('No drafts saved yet. Use "Save Draft" in the form builder to save work in progress.')}
+      </div>`;
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      } catch (err) { document.getElementById('content').innerHTML = '<div class="empty-state">Failed to load drafts</div>'; toast(err.message, 'err'); }
+    }
+
+    function renderDraftCard(f) {
+      return `
+    <div class="form-card" style="border-left:3px solid var(--warning)">
+      <div class="form-card-top">
+        <span class="fc-badge draft">Draft</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-success btn-sm" onclick="publishDraft(${f.id},'${escHtml(f.title)}')">${icon("send", "currentColor", 13)} Publish</button>
+          <button class="btn btn-secondary btn-sm" onclick="location.href='/form-builder?id=${f.id}'">${icon("edit-2", "currentColor", 13)} Edit</button>
+          <button class="btn btn-ghost btn-sm btn-icon" style="color:var(--danger)" onclick="deleteDraft(${f.id},'${escHtml(f.title)}')">${icon("trash-2", "currentColor", 14)}</button>
+        </div>
+      </div>
+      <div class="form-card-title">${escHtml(f.title)}</div>
+      <div class="form-card-desc">${escHtml(f.description || 'No description')}</div>
+      <div class="form-card-meta">
+        <div class="fc-meta-item">${icon("calendar", "currentColor", 12)} ${fmtDate(f.created_at)}</div>
+      </div>
+    </div>`;
+    }
+
+    async function publishDraft(id, title) {
+      confirmModal(`Publish "${title}"?`, 'This will make the form visible to assigned respondents.', async () => {
+        try {
+          const form = await apiGet(`/forms/${id}`);
+          await apiPut(`/forms/${id}`, {
+            title: form.title, description: form.description,
+            due_date: form.due_date, status: 'active',
+            assignees: (form.assignments || []).map(a => a.user_id),
+            sections: form.sections
+          });
+          toast('Form published!', 'ok'); loadDraftForms();
+        } catch (err) { toast(err.message, 'err'); }
+      }, 'Publish', 'btn-success');
+    }
+
+    async function deleteDraft(id, title) {
+      confirmModal(`Delete draft "${title}"?`, 'This will permanently delete this draft.', async () => {
+        try { await apiDelete(`/forms/${id}`); toast('Draft deleted', 'ok'); loadDraftForms(); }
+        catch (err) { toast(err.message, 'err'); }
+      });
+    }
+
+    function filterForms() {
+      const q = (document.getElementById('search-inp')?.value || '').toLowerCase();
+      renderForms(allForms.filter(f => f.title.toLowerCase().includes(q) || (f.description || '').toLowerCase().includes(q)), []);
+    }
+
+    function renderForms(forms, actionForms) {
+      document.getElementById('content').innerHTML = `
+    <div class="forms-grid">
+      <div>
+        <div class="forms-sec-title">My Active Forms</div>
+        ${forms.length ? forms.map(renderFormCard).join('') : emptyBox()}
+      </div>
+      <div>
+        <div class="forms-sec-title">Action Required</div>
+        ${actionForms.length ? actionForms.map(f => `
+          <div class="ar-card" onclick="location.href='/review?formId=${f.id}'" style="cursor:pointer">
+            <div class="ar-title">${escHtml(f.title)}</div>
+            <div class="ar-meta">From: ${escHtml(f.creator_name || 'You')}</div>
+            <div class="ar-due">Due: ${fmtDate(f.due_date)}</div>
+          </div>`).join('') : '<div class="empty-state" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:32px">Your inbox is clear.</div>'}
+      </div>
+    </div>`;
+      if (typeof lucide !== "undefined") lucide.createIcons();
+    }
+
+    function renderFormCard(f) {
+      return `
+    <div class="form-card">
+      <div class="form-card-top">
+        <span class="fc-badge ${f.status}">${f.status}</span>
+        <div style="position:relative">
+          <button class="btn btn-ghost btn-icon" onclick="toggleMenu(${f.id},event)">${icon("more-horizontal", "currentColor", 16)}</button>
+          <div id="menu-${f.id}" class="hidden" style="position:absolute;right:0;top:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);box-shadow:var(--sh-lg);padding:5px;z-index:100;min-width:160px">
+            <button class="btn btn-ghost" style="width:100%;justify-content:flex-start;padding:7px 12px;font-size:.82rem;gap:8px" onclick="location.href='/form-builder?id=${f.id}'">${icon("edit-2", "currentColor", 13)} Edit</button>
+            <button class="btn btn-ghost" style="width:100%;justify-content:flex-start;padding:7px 12px;font-size:.82rem;gap:8px" onclick="location.href='/review?formId=${f.id}'">${icon("eye", "currentColor", 13)} Responses</button>
+            <button class="btn btn-ghost" style="width:100%;justify-content:flex-start;padding:7px 12px;font-size:.82rem;color:var(--danger);gap:8px" onclick="deleteForm(${f.id},'${escHtml(f.title)}')">${icon("trash-2", "currentColor", 13)} Delete</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-card-title">${escHtml(f.title)}</div>
+      <div class="form-card-desc">${escHtml(f.description || 'No description')}</div>
+      <div class="form-card-meta">
+        <div class="fc-meta-item">${icon("calendar", "currentColor", 12)} ${fmtDate(f.created_at)}</div>
+        <div class="fc-meta-item">${icon("users", "currentColor", 12)} ${f.assigned_count || 0} assigned</div>
+        <div class="fc-meta-item">${icon("bar-chart-2", "currentColor", 12)} ${f.response_count || 0} responses</div>
+      </div>
+      <div class="form-card-actions">
+        <button class="btn btn-secondary btn-sm" onclick="location.href='/form-builder?id=${f.id}'">Edit</button>
+        <button class="btn btn-primary btn-sm"   onclick="location.href='/review?formId=${f.id}'">Results</button>
+      </div>
+    </div>`;
+    }
+
+    function toggleMenu(id, e) {
+      e.stopPropagation();
+      document.querySelectorAll('[id^="menu-"]').forEach(m => { if (m.id !== `menu-${id}`) m.classList.add('hidden'); });
+      document.getElementById(`menu-${id}`)?.classList.toggle('hidden');
+      if (typeof lucide !== "undefined") lucide.createIcons();
+    }
+    document.addEventListener('click', () => document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden')));
+
+    function deleteForm(id, title) {
+      confirmModal(`Delete "${title}"?`, 'This permanently deletes the form and all responses.', async () => {
+        try { await apiDelete(`/forms/${id}`); toast('Form deleted', 'ok'); loadActiveForms(); }
+        catch (err) { toast(err.message, 'err'); }
+      });
+    }
+
+    function emptyBox(msg) {
+      return `<div class="empty-state" style="background:var(--bg-card);border:2px dashed var(--border);border-radius:var(--r);padding:44px;text-align:center">
+    <div style="margin-bottom:10px">${icon("file-plus", "var(--txt-3)", 36)}</div>
+    <div style="font-weight:700;margin-bottom:6px">${msg || 'No forms yet'}</div>
+    <div style="color:var(--txt-2);font-size:.82rem;margin-bottom:16px">Start building or use a template.</div>
+    <button class="btn btn-secondary btn-sm" onclick="location.href='/form-builder'">New Form</button>
+  </div>`;
+    }
+
+    // ── Templates Tab ─────────────────────────────────────────────────────────────
+    async function loadTemplatesTab() {
+      document.getElementById('content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+      try {
+        const [sysTpls, myTpls] = await Promise.all([
+          apiGet('/templates/system'),
+          apiGet('/templates/mine').catch(() => [])
+        ]);
+        const cats = {};
+        sysTpls.forEach(t => { if (!cats[t.category]) cats[t.category] = []; cats[t.category].push(t); });
+        document.getElementById('content').innerHTML = `
+      ${myTpls.length ? `
+        <div style="margin-bottom:28px">
+          <div class="forms-sec-title" style="margin-bottom:14px">My Saved Templates (${myTpls.length})</div>
+          <div class="tpl-grid">
+            ${myTpls.map(t => `
+              <div class="tpl-card">
+                <div class="tpl-icon">${icon("layout-template", "currentColor", 18)}</div>
+                <div class="tpl-title">${escHtml(t.title)}</div>
+                <div class="tpl-desc">${escHtml(t.description || 'No description')}</div>
+                <div class="tpl-by">Saved by you</div>
+                <div class="tpl-actions">
+                  <button class="btn btn-primary btn-sm" onclick="instantiateMyTpl(${t.id},'${escHtml(t.title)}')">Use</button>
+                  <button class="btn btn-secondary btn-sm" onclick="location.href='/form-builder?id=${t.id}'">Edit</button>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+      <div class="forms-sec-title" style="margin-bottom:16px">Sample Templates (${sysTpls.length} ready-made)</div>
+      ${Object.entries(cats).map(([cat, tpls]) => `
+        <div style="margin-bottom:28px">
+          <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-2);margin-bottom:12px;padding:6px 10px;background:var(--bg);border-radius:var(--rs);display:inline-block">${escHtml(cat)}</div>
+          <div class="tpl-grid">
+            ${tpls.map(t => `
+              <div class="tpl-card">
+                <div class="tpl-title">${escHtml(t.title)}</div>
+                <div class="tpl-desc">${escHtml(t.description || '')}</div>
+                <div class="tpl-by" style="display:flex;align-items:center;gap:5px">
+                  <span style="background:var(--primary-lite);color:var(--primary);font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:20px">SYSTEM</span>
+                </div>
+                <div class="tpl-actions">
+                  <button class="btn btn-primary btn-sm" onclick="openInstantiate(${t.id},'${escHtml(t.title)}','system')">Use Template</button>
+                  <button class="btn btn-secondary btn-sm" onclick="previewTemplate(${t.id})">Preview</button>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}`;
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      } catch (err) { toast(err.message, 'err'); }
+    }
+
+    async function previewTemplate(id) {
+      try {
+        const t = await apiGet(`/templates/system/${id}`);
+        const secs = typeof t.sections === 'string' ? JSON.parse(t.sections) : t.sections;
+        const sectionsHtml = secs.map((s, si) => `
+      <div style="margin-bottom:16px;padding:14px;background:var(--bg);border-radius:var(--rs)">
+        <div style="font-weight:700;margin-bottom:8px;font-size:.92rem">${si + 1}. ${escHtml(s.title)}</div>
+        ${(s.questions || []).map((q, qi) => `
+          <div style="font-size:.84rem;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span style="color:var(--txt-3);margin-right:6px">${qi + 1}.</span>${escHtml(q.question_text)}
+            <span style="margin-left:8px;font-size:.72rem;background:var(--primary-lite);color:var(--primary);padding:2px 6px;border-radius:10px">${q.question_type.replace('_', ' ')}</span>
+            ${q.is_required ? '<span style="color:var(--accent);margin-left:4px;font-size:.72rem">*required</span>' : ''}
+          </div>`).join('')}
+      </div>`).join('');
+        openModal(`
+      <div class="modal-hd">
+        <div style="display:flex;align-items:center;gap:10px";><span style="font-size:24px"></span><div class="modal-title">${escHtml(t.title)}</div></div>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div style="color:var(--txt-2);font-size:.85rem;margin-bottom:16px;margin-left:9.4px";>${escHtml(t.description || '')}</div>
+      <div style="max-height:380px;overflow-y:auto">${sectionsHtml}</div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        <button class="btn btn-primary" onclick="closeModal();openInstantiate(${t.id},'${escHtml(t.title)}','system')">Use This Template</button>
+      </div>`, 'modal-lg');
+      } catch (err) { toast(err.message, 'err'); }
+    }
+
+    async function openInstantiate(id, title, type) {
+      const users = await apiGet('/auth/users').catch(() => []);
+      const respondents = users.filter(u => u.role === 'respondent');
+      const opts = respondents.map(u => `<option value="${u.id}">${escHtml(u.name)} (${escHtml(u.email)})</option>`).join('');
+      openModal(`
+    <div class="modal-hd"><div class="modal-title">Use: ${escHtml(title)}</div><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="fld-grp" style="margin-bottom:12px"><label>Form Title</label><input class="fld-input" id="inst-title" value="${escHtml(title)}"/></div>
+    <div class="fld-grp" style="margin-bottom:12px"><label>Assign To (hold Ctrl/Cmd for multiple)</label><select class="fld-input" id="inst-user" multiple style="height:90px">${opts}</select></div>
+    <div class="fld-grp" style="margin-bottom:12px"><label>Due Date</label><input type="date" class="fld-input" id="inst-due"/></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doInstantiate(${id},'${type}')">Create Form</button>
+    </div>`);
+    }
+
+    async function doInstantiate(id, type) {
+      const assignees = Array.from(document.getElementById('inst-user').selectedOptions).map(o => +o.value);
+      const endpoint = type === 'system' ? `/templates/system/${id}/instantiate` : `/templates/mine/${id}/instantiate`;
+      try {
+        const result = await apiPost(endpoint, {
+          title: document.getElementById('inst-title').value,
+          due_date: document.getElementById('inst-due').value,
+          assignees
+        });
+        toast('Form created from template and saved to Drafts. Review and Publish when ready.', 'ok');
+        closeModal();
+        switchTab('drafts'); // go to drafts tab so user can review and publish
+      } catch (err) { toast(err.message, 'err'); }
+    }
+
+    async function instantiateMyTpl(id, title) { await openInstantiate(id, title, 'mine'); }
+
+    // ── Respondent view ───────────────────────────────────────────────────────────
+    async function loadRespondentForms() {
+      document.getElementById('content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+      try {
+        const forms = await apiGet('/forms/action-required');
+        document.getElementById('content').innerHTML = `
+      <div>
+        <div class="forms-sec-title">Forms Assigned to Me</div>
+        ${forms.length ? forms.map(f => `
+          <div class="ar-card" onclick="location.href='/fill-form?id=${f.id}'" style="cursor:pointer;margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div class="ar-title">${escHtml(f.title)}</div>
+                <div class="ar-meta">From: ${escHtml(f.creator_name)}</div>
+                <div class="ar-due">Due: ${fmtDate(f.due_date)}</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();location.href='/fill-form?id=${f.id}'">Fill Form</button>
+            </div>
+          </div>`).join('') : '<div class="empty-state" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:32px">No forms assigned to you yet.</div>'}
+      </div>`;
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      } catch (err) { toast(err.message, 'err'); }
+    }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Analytics</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/><polyline points="9 8 10 9 12 7"/></svg></div><div class="sb-logo-txt">Query<span>Craft</span></div></div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-user">
+      <div class="sb-user-row"><div class="avatar" id="sb-avatar"></div><div style="flex:1;overflow:hidden"><div class="sb-uname" id="sb-uname"></div><div class="sb-urole" id="sb-urole"></div></div></div>
+      <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="ph">
+      <div>
+        <div class="ph-title">Analytics</div>
+        <div class="ph-sub">Track performance and insights across your forms.</div>
+      </div>
+    </div>
+    <div id="content"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+  </main>
+</div>
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if (!requireAuth()) throw 0;
+requireCreator();
+renderSidebar('analytics');
+if(typeof lucide!=="undefined")lucide.createIcons();
+
+async function load() {
+  document.getElementById('content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  try {
+    const data = await apiGet('/analytics/overview');
+    const s    = data.stats || {};
+
+    const totalAssignees = parseInt(s.total_assignees) || 0;
+    const completed      = parseInt(s.completed) || 0;
+    const inReview       = parseInt(s.in_review) || 0;
+    const needsAttn      = parseInt(s.needs_attention) || 0;
+    const totalForms     = parseInt(s.total_forms) || 0;
+    const totalResponses = parseInt(s.total_responses) || 0;
+    const pct            = totalAssignees > 0 ? Math.min(100, Math.round((completed / totalAssignees) * 100)) : 0;
+
+    document.getElementById('content').innerHTML = `
+      <div class="an-stats" style="margin-bottom:22px">
+        <div class="an-stat">
+          <div class="an-label">${icon("file-text","currentColor",14)} Total Forms</div>
+          <div class="an-val">${totalForms}</div>
+        </div>
+        <div class="an-stat">
+          <div class="an-label">${icon("send","currentColor",14)} Total Responses</div>
+          <div class="an-val">${totalResponses}</div>
+        </div>
+        <div class="an-stat">
+          <div class="an-label">${icon("percent","currentColor",14)} Completion Rate</div>
+          <div class="an-val" style="color:var(--success)">${pct}%</div>
+        </div>
+        <div class="an-stat">
+          <div class="an-label">${icon("check-circle","currentColor",14)} Completed</div>
+          <div class="an-val" style="color:var(--success)">${completed}</div>
+        </div>
+        <div class="an-stat">
+          <div class="an-label">${icon("clock","currentColor",14)} In Review</div>
+          <div class="an-val" style="color:var(--warning)">${inReview}</div>
+        </div>
+        <div class="an-stat">
+          <div class="an-label">${icon("alert-circle","currentColor",14)} Needs Attention</div>
+          <div class="an-val" style="color:var(--accent)">${needsAttn}</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:22px">
+        <div class="card-hd">
+          <div class="card-title">${icon("table","currentColor",14)} Forms Performance</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Form</th><th>Status</th><th>Assigned</th><th>Submitted</th><th>In Review</th><th>Completed</th><th>Progress</th><th>Due</th></tr></thead>
+            <tbody>
+              ${(data.forms||[]).length === 0 ? '<tr><td colspan="7" style="text-align:center;color:var(--txt-3);padding:32px">No forms yet. Create your first form to see analytics.</td></tr>' :
+                (data.forms||[]).map(f => {
+                  const assigned  = parseInt(f.assigned) || 0;
+                  const comp      = parseInt(f.completed) || 0;
+                  const responses = parseInt(f.responses) || 0;
+                  const p = assigned > 0 ? Math.min(100, Math.round((comp / assigned) * 100)) : 0;
+                  const inReview = parseInt(f.in_review) || 0;
+                  return `<tr onclick="location.href='/review?formId=${f.id}'" style="cursor:pointer">
+                    <td><strong>${escHtml(f.title)}</strong></td>
+                    <td><span class="fc-badge ${f.status||'draft'}">${f.status||'draft'}</span></td>
+                    <td>${assigned}</td>
+                    <td>${responses}</td>
+                    <td>${inReview > 0 ? `<span style="color:var(--warning);font-weight:700">${inReview}</span>` : inReview}</td>
+                    <td>${comp > 0 ? `<span style="color:var(--success);font-weight:700">${comp}</span>` : comp}</td>
+                    <td><div style="display:flex;align-items:center;gap:8px">
+                      <div class="prog-bar" style="flex:1"><div class="prog-fill" style="width:${p}%"></div></div>
+                      <span style="font-size:.74rem;color:var(--txt-3);min-width:32px">${p}%</span>
+                    </div></td>
+                    <td style="font-size:.82rem;${isOverdue(f.due_date)?'color:var(--danger);font-weight:700':''}">${fmtDate(f.due_date)}${isOverdue(f.due_date)?' ⚠️':''}</td>
+                  </tr>`;
+                }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">${icon("activity","currentColor",14)} Audit Log</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>User</th><th>Action</th><th>Form</th><th>Time</th></tr></thead>
+            <tbody>
+              ${(data.auditLogs||[]).length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--txt-3);padding:24px">No activity recorded yet.</td></tr>' :
+                (data.auditLogs||[]).map(l => `
+                  <tr>
+                    <td><strong>${escHtml(l.user_name||'—')}</strong></td>
+                    <td>${escHtml(l.action||'—')}</td>
+                    <td style="color:var(--txt-2)">${escHtml(l.form_title||'—')}</td>
+                    <td style="font-size:.78rem;color:var(--txt-3);font-family:var(--mono)">${timeAgo(l.created_at)}</td>
+                  </tr>`
+              ).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    if(typeof lucide!=="undefined")lucide.createIcons();
+  } catch(err) {
+    document.getElementById('content').innerHTML = `
+      <div class="empty-state" style="text-align:center;padding:48px">
+        ${icon("wifi-off","var(--txt-3)",40)}
+        <div style="font-weight:700;margin-bottom:6px">Failed to load analytics</div>
+        <div style="color:var(--txt-2);font-size:.85rem;margin-bottom:16px">${escHtml(err.message)}</div>
+        <button class="btn btn-primary" onclick="load()">Try Again</button>
+      </div>`;
+    if(typeof lucide!=="undefined")lucide.createIcons();
+  }
+}
+load();
+</script>
+</body></html>

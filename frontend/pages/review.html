@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QueryCraft – Review</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/><polyline points="9 8 10 9 12 7"/></svg></div><div class="sb-logo-txt">Query<span>Craft</span></div></div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-user">
+      <div class="sb-user-row"><div class="avatar" id="sb-avatar"></div><div style="flex:1;overflow:hidden"><div class="sb-uname" id="sb-uname"></div><div class="sb-urole" id="sb-urole"></div></div></div>
+      <button class="signout-btn" onclick="clearAuth();location.href='/login'"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out</button>
+    </div>
+  </aside>
+
+  <main class="main" id="main-area">
+    <div class="spinner-wrap"><div class="spinner"></div></div>
+  </main>
+</div>
+
+<!-- Send Back Modal -->
+<div id="sb-modal" class="hidden">
+  <div class="modal-overlay" onclick="if(event.target===this)closeSbModal()">
+    <div class="modal">
+      <div class="modal-hd">
+        <div class="modal-title">↩ Send back for changes</div>
+        <button class="modal-close" onclick="closeSbModal()">✕</button>
+      </div>
+      <div class="sb-info"><span>⚠️</span><span>The responder will be notified to update their answers based on your feedback.</span></div>
+      <div class="fld-grp" style="margin-bottom:6px"><label>Reason / Instructions</label></div>
+      <textarea class="sb-textarea" id="sb-note" placeholder="e.g. Please elaborate on section 2…"></textarea>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" onclick="closeSbModal()">Cancel</button>
+        <button class="btn btn-danger" id="sb-confirm-btn">↩ Send Back</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/vendor/lucide.min.js"></script>
+<script src="/js/shared.js"></script>
+<script>
+if(!requireAuth()) throw 0;
+requireCreator();
+const user = getUser();
+renderSidebar('questionnaire');
+if(typeof lucide!=="undefined")lucide.createIcons();
+
+const params    = new URLSearchParams(location.search);
+const formId    = params.get('formId');
+const respId    = params.get('respId');
+
+async function init(){
+  if(respId){ await loadReview(respId); }
+  else if(formId){ await loadResponsesList(formId); }
+  else { location.href='/questionnaire'; }
+}
+
+// ── Responses List ────────────────────────────────────────────────────────────
+async function loadResponsesList(fid){
+  const main=document.getElementById('main-area');
+  try{
+    const [form,responses]=await Promise.all([apiGet(`/forms/${fid}`), apiGet(`/responses/form/${fid}`)]);
+    main.innerHTML=`
+      <div class="builder-bar">
+        <div class="builder-head-left">
+          <button class="builder-back" onclick="location.href='/questionnaire'">${icon("arrow-left","currentColor",18)}</button>
+          <div>
+            <div class="builder-title">Responses: ${escHtml(form.title)}</div>
+            <div class="builder-creator">Created by you</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        ${responses.length===0
+          ?'<div class="empty-state" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:64px">No responses yet.</div>'
+          :responses.map(r=>`
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:16px 22px;display:flex;align-items:center;gap:14px;margin-bottom:10px;box-shadow:var(--sh-sm)">
+            <div class="avatar" style="width:38px;height:38px;font-size:.9rem">${r.user_name.charAt(0).toUpperCase()}</div>
+            <div style="flex:1">
+              <div style="font-weight:700">${escHtml(r.user_name)}</div>
+              <div style="font-size:.78rem;color:var(--txt-3)">Submitted: ${fmtDate(r.submitted_at)}</div>
+            </div>
+            <span class="status-badge ${sbClass(r.status)}">${statusTxt(r.status)}</span>
+            <button class="btn btn-secondary btn-sm" onclick="location.href='/review?formId=${fid}&respId=${r.id}'">Review</button>
+          </div>`).join('')}
+      </div>`;
+  }catch(err){ main.innerHTML=`<div class="empty-state">Failed to load: ${escHtml(err.message)}</div>`; }
+}
+
+// ── Single Review ─────────────────────────────────────────────────────────────
+async function loadReview(rid){
+  const main=document.getElementById('main-area');
+  try{
+    const resp=await apiGet(`/responses/${rid}`);
+    const form=await apiGet(`/forms/${resp.form_id||formId}`);
+    const answersMap={};
+    (resp.answers||[]).forEach(a=>{
+      try{ answersMap[a.question_id]=typeof a.answer_value==='string'?JSON.parse(a.answer_value):a.answer_value; }catch{ answersMap[a.question_id]=a.answer_value; }
+    });
+
+    const sBadge=sbClass(resp.status);
+    const sTxt={submitted:'Pending Review',resubmitted:'Pending Review',returned:'Returned for Changes',reviewed:'Review Completed'}[resp.status]||resp.status;
+    const isDone=resp.status==='reviewed';
+    const isRet =resp.status==='returned';
+
+    main.innerHTML=`
+      <div class="builder-bar">
+        <div class="builder-head-left">
+          <button class="builder-back" onclick="location.href='/review?formId=${form.id}'"><i data-lucide='arrow-left'></i>${icon("arrow-left","currentColor",18)}</button>
+          <span class="status-badge ${sBadge}">${escHtml(sTxt)}</span>
+        </div>
+        <div class="builder-head-right">
+          ${!isDone?`
+            <button class="btn btn-secondary" onclick="openSbModal(${rid},${form.id})">↩ Send Back</button>
+            <button class="btn btn-success" onclick="completeReview(${rid},${form.id})">✓ Complete Review</button>
+          `:''}
+        </div>
+      </div>
+
+      ${isRet?`<div style="background:var(--warning-lite);border:1px solid rgba(245,158,11,.3);border-radius:var(--rs);padding:11px 16px;margin-bottom:18px;font-size:.85rem;color:var(--txt-2)">
+        You have returned this form to the assignee. Waiting for resubmission.</div>`:''}
+
+      <div class="review-layout">
+        <div>
+          <div class="form-hero" style="margin-bottom:20px">
+            <div class="fh-title">${escHtml(form.title)}</div>
+            <div class="fh-desc">${escHtml(form.description||'')}</div>
+            <div class="fh-meta">
+              <span>👤 Created by: ${escHtml(form.creator_name||'')}</span>
+              <span>✅ Submitted by: ${escHtml(resp.user_name)}</span>
+              <span>📅 Due: ${fmtDate(form.due_date)}</span>
+            </div>
+          </div>
+          ${renderRespSections(form.sections||[], answersMap)}
+        </div>
+        <div class="review-sidebar">
+          <div class="rs-title">🕐 Activity Log</div>
+          ${(resp.activity_logs||[]).map(l=>`
+            <div class="act-item">
+              <div class="act-dot ${l.action.includes('completed')?'s':l.action.includes('back')?'w':''}"></div>
+              <div>
+                <div class="act-time">${fmtDate(l.created_at)} ${new Date(l.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
+                <div class="act-action">${escHtml(l.action)}</div>
+                <div class="act-by">by ${escHtml(l.user_name)}</div>
+                ${l.note?`<div class="act-note">☐ "${escHtml(l.note)}"</div>`:''}
+              </div>
+            </div>`).join('')||'<div class="empty-state">No activity yet</div>'}
+        </div>
+      </div>`;
+  }catch(err){ main.innerHTML=`<div class="empty-state">Failed to load: ${escHtml(err.message)}</div>`; }
+}
+
+function renderRespSections(sections, aMap){
+  return sections.map((sec,si)=>`
+    <div class="fill-panel" style="margin-bottom:14px">
+      <div class="fill-sec-hd">
+        <span class="fill-sec-step">Step ${si+1} of ${sections.length}</span>
+        <div class="fill-sec-name">${escHtml(sec.title)}</div>
+        <div class="fill-sec-desc">${escHtml(sec.description||'')}</div>
+      </div>
+      ${(sec.questions||[]).map(q=>{
+        const val=aMap[q.id];
+        const opts=q.options?(typeof q.options==='string'?JSON.parse(q.options):q.options):[];
+        let ansHtml='';
+        if(q.question_type==='rating'){
+          ansHtml=`<div class="rating-row">${[1,2,3,4,5].map(n=>`<button class="rating-btn ${val==n?'sel':''}" disabled>${n}</button>`).join('')}</div>`;
+        } else if(q.question_type==='multiple_choice'){
+          const vals=Array.isArray(val)?val:[];
+          ansHtml=opts.map(o=>`<div class="choice-opt ${vals.includes(o)?'sel':''}"><input type="checkbox" ${vals.includes(o)?'checked':''} disabled/><label>${escHtml(o)}</label></div>`).join('');
+        } else if(q.question_type==='single_choice'){
+          ansHtml=opts.map(o=>`<div class="choice-opt ${val===o?'sel':''}"><input type="radio" ${val===o?'checked':''} disabled/><label>${escHtml(o)}</label></div>`).join('');
+        } else {
+          ansHtml=`<div class="fill-inp" style="min-height:40px;background:var(--bg);display:flex;align-items:center;color:${val?'var(--txt)':'var(--txt-3)'}">${escHtml(String(val||'—'))}</div>`;
+        }
+        return `<div class="q-block"><div class="q-label">${escHtml(q.question_text)}${q.is_required?'<span class="req">*</span>':''}</div>${ansHtml}</div>`;
+      }).join('')}
+    </div>`).join('');
+}
+
+// ── Send Back ──────────────────────────────────────────────────────────────────
+let _sbRid=null, _sbFid=null;
+function openSbModal(rid,fid){
+  _sbRid=rid; _sbFid=fid;
+  document.getElementById('sb-note').value='';
+  document.getElementById('sb-modal').classList.remove('hidden');
+  document.getElementById('sb-confirm-btn').onclick=doSendBack;
+}
+function closeSbModal(){ document.getElementById('sb-modal').classList.add('hidden'); }
+async function doSendBack(){
+  const note=document.getElementById('sb-note').value.trim();
+  try{
+    await apiPost(`/responses/${_sbRid}/send-back`,{note});
+    toast('Sent back for changes','ok'); closeSbModal();
+    setTimeout(()=>loadReview(_sbRid),800);
+  }catch(err){ toast(err.message,'err'); }
+}
+
+async function completeReview(rid,fid){
+  try{
+    await apiPost(`/responses/${rid}/complete`,{});
+    toast('Review completed!','ok');
+    setTimeout(()=>location.href=`/review?formId=${fid}`,1000);
+  }catch(err){ toast(err.message,'err'); }
+}
+
+function sbClass(s){
+  return {submitted:'sb-pending',resubmitted:'sb-pending',returned:'sb-returned',reviewed:'sb-completed'}[s]||'sb-pending';
+}
+
+init().then(() => { if(typeof lucide!=="undefined")lucide.createIcons(); });
+</script>
+</body>
+</html>
